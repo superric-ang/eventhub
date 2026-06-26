@@ -4,7 +4,7 @@ import {
   getUsers, getUserById, updateUserRole,
   getDashboardStats,
   generateReport, getReports,
-  getPayouts, approvePayout, markPayoutPaid,
+  getPayouts, approvePayout, markPayoutPaid, createPayoutForEvent, getPaymentAccounts,
   getColorSchemes,
 } from '../controllers/adminController';
 import { protect, authorize } from '../middleware/auth';
@@ -22,6 +22,8 @@ router.get('/reports', protect, authorize('admin'), getReports);
 router.get('/payouts', protect, authorize('admin'), getPayouts);
 router.put('/payouts/:id/approve', protect, authorize('admin'), approvePayout);
 router.put('/payouts/:id/pay', protect, authorize('admin'), markPayoutPaid);
+router.post('/payouts/create', protect, authorize('admin'), createPayoutForEvent);
+router.get('/payment-accounts', protect, authorize('admin'), getPaymentAccounts);
 router.get('/color-schemes', getColorSchemes);
 
 export default router;

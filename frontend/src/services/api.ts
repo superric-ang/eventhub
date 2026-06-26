@@ -75,4 +75,12 @@ export const adminAPI = {
   getColorSchemes: () => api.get('/admin/color-schemes'),
 };
 
+export const paymentAccountAPI = {
+  getMine: () => api.get('/payment-accounts'),
+  create: (data: any) => api.post('/payment-accounts', data),
+  update: (id: string, data: any) => api.put(`/payment-accounts/${id}`, data),
+  delete: (id: string) => api.delete(`/payment-accounts/${id}`),
+  setDefault: (id: string) => api.put(`/payment-accounts/${id}/default`),
+};
+
 export default api;

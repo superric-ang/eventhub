@@ -11,6 +11,7 @@ import eventRoutes from './routes/eventRoutes';
 import orderRoutes from './routes/orderRoutes';
 import promoRoutes from './routes/promoRoutes';
 import adminRoutes from './routes/adminRoutes';
+import paymentAccountRoutes from './routes/paymentAccountRoutes';
 import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config();
@@ -63,6 +64,7 @@ app.use('/api/events', eventRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/promos', promoRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/payment-accounts', paymentAccountRoutes);
 
 app.get('/api/health', (_req, res) => {
   res.json({

@@ -331,20 +331,31 @@ export const cancelOrder = async (req: AuthRequest, res: Response) => {
       return res.status(403).json({ message: 'Not authorized' });
     }
 
-    const { error: updateError } = await supabase
-      .from('orders')
-      .update({ status: 'cancelled' })
-      .eq('id', req.params.id);
-
-    if (updateError) {
-      return res.status(400).json({ message: updateError.message });
-    }
-
     const { data: event } = await supabase
       .from('events')
       .select('*')
       .eq('id', order.event_id)
       .single();
+
+    const settings = event?.settings || {};
+    const refundPolicy = settings.refundPolicy || 'none';
+    const allowRefund = refundPolicy !== 'none';
+
+    if (allowRefund) {
+      await supabase
+        .from('orders')
+        .update({
+          status: 'refunded',
+          refunded_at: new Date().toISOString(),
+          refund_note: 'Cancelled by user',
+        })
+        .eq('id', req.params.id);
+    } else {
+      await supabase
+        .from('orders')
+        .update({ status: 'cancelled' })
+        .eq('id', req.params.id);
+    }
 
     if (event) {
       const updatedTiers = event.ticket_tiers.map((tier: any) => {
@@ -365,8 +376,90 @@ export const cancelOrder = async (req: AuthRequest, res: Response) => {
         .eq('id', order.event_id);
     }
 
-    const cancelledOrder = transformOrder({ ...order, status: 'cancelled' });
-    res.json({ success: true, order: cancelledOrder });
+    const newStatus = allowRefund ? 'refunded' : 'cancelled';
+    const updatedOrder = transformOrder({ ...order, status: newStatus });
+    res.json({ success: true, order: updatedOrder });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const initiateRefund = async (req: AuthRequest, res: Response) => {
+  try {
+    const { refundAccountId, note } = req.body;
+
+    const { data: order, error: fetchError } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('order_number', req.params.orderNumber)
+      .single();
+
+    if (fetchError || !order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    if (order.status !== 'confirmed' && order.status !== 'pending') {
+      return res.status(400).json({ message: `Order cannot be refunded in status: ${order.status}` });
+    }
+
+    const { data: event } = await supabase
+      .from('events')
+      .select('*')
+      .eq('id', order.event_id)
+      .single();
+
+    if (event?.organizer_id !== req.user!.id && req.user!.role !== 'admin') {
+      return res.status(403).json({ message: 'Not authorized to refund this order' });
+    }
+
+    if (refundAccountId) {
+      const { data: account } = await supabase
+        .from('payment_accounts')
+        .select('id')
+        .eq('id', refundAccountId)
+        .single();
+
+      if (!account) {
+        return res.status(400).json({ message: 'Refund payment account not found' });
+      }
+    }
+
+    const { data: updated, error } = await supabase
+      .from('orders')
+      .update({
+        status: 'refunded',
+        refund_account_id: refundAccountId || null,
+        refunded_at: new Date().toISOString(),
+        refund_note: note || null,
+      })
+      .eq('id', order.id)
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    if (event) {
+      const updatedTiers = event.ticket_tiers.map((tier: any) => {
+        const item = order.items.find((i: any) => i.ticketTierId === tier._id);
+        if (item) {
+          return { ...tier, quantitySold: Math.max(0, (tier.quantitySold || 0) - item.quantity) };
+        }
+        return tier;
+      });
+
+      const totalRefunded = order.items.reduce((sum: number, item: any) => sum + item.quantity, 0);
+      await supabase
+        .from('events')
+        .update({
+          ticket_tiers: updatedTiers,
+          current_attendees: Math.max(0, (event.current_attendees || 0) - totalRefunded),
+        })
+        .eq('id', order.event_id);
+    }
+
+    res.json({ success: true, order: transformOrder(updated) });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }

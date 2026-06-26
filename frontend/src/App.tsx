@@ -11,6 +11,7 @@ import CreateEvent from './pages/CreateEvent';
 import Dashboard from './pages/Dashboard';
 import Tickets from './pages/Tickets';
 import Profile from './pages/Profile';
+import PaymentAccounts from './pages/PaymentAccounts';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminUsers from './pages/AdminUsers';
 import AdminPayouts from './pages/AdminPayouts';
@@ -111,6 +112,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Profile />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/payment-accounts"
+            element={
+              <ProtectedRoute>
+                <PaymentAccounts />
               </ProtectedRoute>
             }
           />

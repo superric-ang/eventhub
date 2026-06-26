@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, Menu, X, User, ChevronDown, LogOut, Ticket, PlusCircle, LayoutDashboard } from 'lucide-react';
+import { Search, Menu, X, User, ChevronDown, LogOut, Ticket, PlusCircle, LayoutDashboard, Wallet } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Navbar() {
@@ -87,6 +87,9 @@ export default function Navbar() {
                         </Link>
                         <Link to="/tickets" className="flex items-center gap-3 px-4 py-2 hover:bg-eb-gray-bg text-sm" onClick={() => setProfileOpen(false)}>
                           <Ticket className="w-4 h-4" /> My Tickets
+                        </Link>
+                        <Link to="/payment-accounts" className="flex items-center gap-3 px-4 py-2 hover:bg-eb-gray-bg text-sm" onClick={() => setProfileOpen(false)}>
+                          <Wallet className="w-4 h-4" /> Payment Accounts
                         </Link>
                         <button onClick={handleLogout} className="flex items-center gap-3 px-4 py-2 hover:bg-eb-gray-bg text-sm w-full text-left text-red-500">
                           <LogOut className="w-4 h-4" /> Sign Out

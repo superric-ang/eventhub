@@ -409,6 +409,7 @@ export const getPayouts = async (req: AuthRequest, res: Response) => {
 
     const eventIds = [...new Set((data || []).map((p: any) => p.event_id))];
     const organizerIds = [...new Set((data || []).map((p: any) => p.organizer_id))];
+    const accountIds = [...new Set((data || []).map((p: any) => p.payment_account_id).filter(Boolean))];
 
     let eventsMap: Record<string, any> = {};
     if (eventIds.length > 0) {
@@ -431,10 +432,20 @@ export const getPayouts = async (req: AuthRequest, res: Response) => {
       });
     }
 
+    let accountsMap: Record<string, any> = {};
+    if (accountIds.length > 0) {
+      const { data: accounts } = await supabase
+        .from('payment_accounts')
+        .select('*')
+        .in('id', accountIds);
+      (accounts || []).forEach((a: any) => { accountsMap[a.id] = a; });
+    }
+
     const enriched = (data || []).map((p: any) => {
       const transformed = transformKeys(p);
       transformed.event = eventsMap[p.event_id] || null;
       transformed.organizer = usersMap[p.organizer_id] || null;
+      transformed.paymentAccount = p.payment_account_id ? accountsMap[p.payment_account_id] || null : null;
       return transformed;
     });
 
@@ -512,6 +523,120 @@ export const markPayoutPaid = async (req: AuthRequest, res: Response) => {
     }
 
     res.json({ success: true, payout: transformKeys(data) });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const createPayoutForEvent = async (req: AuthRequest, res: Response) => {
+  try {
+    const { eventId } = req.body;
+
+    const { data: event, error: eventError } = await supabase
+      .from('events')
+      .select('*')
+      .eq('id', eventId)
+      .single();
+
+    if (eventError || !event) {
+      return res.status(404).json({ message: 'Event not found' });
+    }
+
+    if (event.status !== 'completed') {
+      return res.status(400).json({ message: 'Event must be completed to create payout' });
+    }
+
+    const { data: existingPayout } = await supabase
+      .from('payouts')
+      .select('id')
+      .eq('event_id', eventId)
+      .maybeSingle();
+
+    if (existingPayout) {
+      return res.status(400).json({ message: 'Payout already exists for this event' });
+    }
+
+    const { data: orders } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('event_id', eventId)
+      .eq('status', 'confirmed');
+
+    let totalAmount = 0;
+    let totalServiceFee = 0;
+    let ticketCount = 0;
+
+    (orders || []).forEach((o: any) => {
+      totalAmount += Number(o.total_amount) || 0;
+      totalServiceFee += Number(o.service_fee) || 0;
+      ticketCount += (o.items || []).reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
+    });
+
+    const netAmount = Math.round((totalAmount - totalServiceFee) * 100) / 100;
+
+    const { data: defaultAccount } = await supabase
+      .from('payment_accounts')
+      .select('id')
+      .eq('user_id', event.organizer_id)
+      .eq('is_default', true)
+      .maybeSingle();
+
+    const { data, error } = await supabase
+      .from('payouts')
+      .insert({
+        event_id: eventId,
+        organizer_id: event.organizer_id,
+        total_amount: totalAmount,
+        service_fee: totalServiceFee,
+        net_amount: netAmount,
+        ticket_count: ticketCount,
+        status: 'pending',
+        payment_account_id: defaultAccount?.id || null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    res.status(201).json({ success: true, payout: transformKeys(data) });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const getPaymentAccounts = async (_req: AuthRequest, res: Response) => {
+  try {
+    const { data, error } = await supabase
+      .from('payment_accounts')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    const userIds = [...new Set((data || []).map((a: any) => a.user_id))];
+    let usersMap: Record<string, any> = {};
+    if (userIds.length > 0) {
+      const { data: allUsers } = await supabase.auth.admin.listUsers();
+      (allUsers?.users || []).forEach((u: any) => {
+        usersMap[u.id] = {
+          firstName: u.user_metadata?.firstName,
+          lastName: u.user_metadata?.lastName,
+          email: u.email,
+        };
+      });
+    }
+
+    const enriched = (data || []).map((a: any) => {
+      const transformed = transformKeys(a);
+      transformed.user = usersMap[a.user_id] || null;
+      return transformed;
+    });
+
+    res.json({ success: true, paymentAccounts: enriched });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
