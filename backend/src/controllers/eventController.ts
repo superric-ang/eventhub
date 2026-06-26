@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import { v4 as uuidv4 } from 'uuid';
 import supabase from '../lib/supabase';
 import { AuthRequest } from '../middleware/auth';
 import { transformEvent } from '../utils/transformers';
@@ -33,6 +34,12 @@ export const createEvent = async (req: AuthRequest, res: Response) => {
       }
     }
 
+    const startDate = new Date(body.startDate);
+    const endDate = new Date(body.endDate);
+    if (endDate <= startDate) {
+      return res.status(400).json({ message: 'Event end date must be after start date' });
+    }
+
     const coverImage = req.file ? `/uploads/${req.file.filename}` : (body.coverImage || null);
 
     const eventData = {
@@ -50,7 +57,10 @@ export const createEvent = async (req: AuthRequest, res: Response) => {
       start_date: body.startDate,
       end_date: body.endDate,
       timezone: body.timezone || 'Asia/Singapore',
-      ticket_tiers: body.ticketTiers || [],
+      ticket_tiers: (body.ticketTiers || []).map((tier: any) => ({
+        ...tier,
+        _id: tier._id || tier.id || uuidv4(),
+      })),
       tags: body.tags || [],
       is_private: body.isPrivate || false,
       max_attendees: body.maxAttendees || 0,
@@ -227,7 +237,13 @@ export const updateEvent = async (req: AuthRequest, res: Response) => {
     if (req.body.startDate) updates.start_date = req.body.startDate;
     if (req.body.endDate) updates.end_date = req.body.endDate;
     if (req.body.venue) updates.venue = typeof req.body.venue === 'string' ? JSON.parse(req.body.venue) : req.body.venue;
-    if (req.body.ticketTiers) updates.ticket_tiers = typeof req.body.ticketTiers === 'string' ? JSON.parse(req.body.ticketTiers) : req.body.ticketTiers;
+    if (req.body.ticketTiers) {
+      const raw = typeof req.body.ticketTiers === 'string' ? JSON.parse(req.body.ticketTiers) : req.body.ticketTiers;
+      updates.ticket_tiers = raw.map((tier: any) => ({
+        ...tier,
+        _id: tier._id || tier.id || uuidv4(),
+      }));
+    }
     if (req.body.tags) updates.tags = typeof req.body.tags === 'string' ? JSON.parse(req.body.tags) : req.body.tags;
     if (req.body.isPrivate !== undefined) updates.is_private = req.body.isPrivate;
     if (req.body.maxAttendees !== undefined) updates.max_attendees = req.body.maxAttendees;

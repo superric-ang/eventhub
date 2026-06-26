@@ -60,4 +60,19 @@ export const promoAPI = {
   validate: (params: any) => api.get('/promos/validate', { params }),
 };
 
+export const adminAPI = {
+  getUsers: (params?: any) => api.get('/admin/users', { params }),
+  getUserById: (id: string) => api.get(`/admin/users/${id}`),
+  updateUserRole: (id: string, role: string) => api.put(`/admin/users/${id}/role`, { role }),
+  getStats: () => api.get('/admin/stats'),
+  getSettings: () => api.get('/admin/settings'),
+  updateSettings: (key: string, value: any) => api.put('/admin/settings', { key, value }),
+  getPayouts: (params?: any) => api.get('/admin/payouts', { params }),
+  approvePayout: (id: string) => api.put(`/admin/payouts/${id}/approve`),
+  markPayoutPaid: (id: string) => api.put(`/admin/payouts/${id}/pay`),
+  generateReport: (type: string, startDate: string, endDate: string) => api.post('/admin/reports/generate', { type, periodStart: startDate, periodEnd: endDate }),
+  getReports: () => api.get('/admin/reports'),
+  getColorSchemes: () => api.get('/admin/color-schemes'),
+};
+
 export default api;
