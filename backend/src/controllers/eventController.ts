@@ -87,7 +87,7 @@ export const getEvents = async (req: AuthRequest, res: Response) => {
 
     if (isMyEvents && req.user) {
       query = query.eq('organizer_id', req.user.id);
-      if (status) query = query.eq('status', status);
+      if (status && status !== 'all') query = query.eq('status', status);
     } else {
       query = query.eq('status', 'published');
     }
