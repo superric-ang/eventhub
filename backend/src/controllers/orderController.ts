@@ -3,6 +3,7 @@ import supabase from '../lib/supabase';
 import { AuthRequest } from '../middleware/auth';
 import { generateOrderNumber } from '../utils/generateOrderNumber';
 import { calculateFees } from '../utils/calculateFees';
+import { transformOrder, transformEvent } from '../utils/transformers';
 
 export const createOrder = async (req: AuthRequest, res: Response) => {
   try {
@@ -151,17 +152,17 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
     const { data: buyerData } = await supabase.auth.admin.listUsers();
     const buyer = (buyerData?.users || []).find((u: any) => u.id === req.user!.id);
 
+    const createdOrder = transformOrder(order);
+    createdOrder.event = { title: event.title, startDate: event.start_date, venue: event.venue };
+    createdOrder.buyer = {
+      firstName: buyer?.user_metadata?.firstName,
+      lastName: buyer?.user_metadata?.lastName,
+      email: buyer?.email,
+    };
+
     res.status(201).json({
       success: true,
-      order: {
-        ...order,
-        event: { title: event.title, start_date: event.start_date, venue: event.venue },
-        buyer: {
-          firstName: buyer?.user_metadata?.firstName,
-          lastName: buyer?.user_metadata?.lastName,
-          email: buyer?.email,
-        },
-      },
+      order: createdOrder,
     });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -218,11 +219,12 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    const enriched = (orders || []).map((o: any) => ({
-      ...o,
-      event: eventsMap[o.event_id] || null,
-      buyer: usersMap[o.buyer_id] || null,
-    }));
+    const enriched = (orders || []).map((o: any) => {
+      const transformed = transformOrder(o);
+      transformed.event = eventsMap[o.event_id] || null;
+      transformed.buyer = usersMap[o.buyer_id] || null;
+      return transformed;
+    });
 
     res.json({
       success: true,
@@ -255,13 +257,15 @@ export const getOrder = async (req: AuthRequest, res: Response) => {
     const { data: allUsers } = await supabase.auth.admin.listUsers();
     const buyer = (allUsers?.users || []).find((u: any) => u.id === order.buyer_id);
 
+    const orderResult = transformOrder(order);
+    orderResult.event = event ? transformEvent(event) : null;
+    orderResult.buyer = buyer
+      ? { firstName: buyer.user_metadata?.firstName, lastName: buyer.user_metadata?.lastName, email: buyer.email }
+      : null;
+
     res.json({
       success: true,
-      order: {
-        ...order,
-        event: event || null,
-        buyer: buyer ? { firstName: buyer.user_metadata?.firstName, lastName: buyer.user_metadata?.lastName, email: buyer.email } : null,
-      },
+      order: orderResult,
     });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -305,7 +309,7 @@ export const checkInAttendee = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: error.message });
     }
 
-    res.json({ success: true, order: updated });
+    res.json({ success: true, order: transformOrder(updated) });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
@@ -361,7 +365,8 @@ export const cancelOrder = async (req: AuthRequest, res: Response) => {
         .eq('id', order.event_id);
     }
 
-    res.json({ success: true, order: { ...order, status: 'cancelled' } });
+    const cancelledOrder = transformOrder({ ...order, status: 'cancelled' });
+    res.json({ success: true, order: cancelledOrder });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }

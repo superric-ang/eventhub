@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import supabase from '../lib/supabase';
 import { AuthRequest } from '../middleware/auth';
+import { transformPromo } from '../utils/transformers';
 
 export const createPromoCode = async (req: AuthRequest, res: Response) => {
   try {
@@ -40,7 +41,7 @@ export const createPromoCode = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: error.message });
     }
 
-    res.status(201).json({ success: true, promo });
+    res.status(201).json({ success: true, promo: transformPromo(promo) });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }

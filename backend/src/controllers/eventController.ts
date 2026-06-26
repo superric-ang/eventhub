@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import supabase from '../lib/supabase';
 import { AuthRequest } from '../middleware/auth';
+import { transformEvent } from '../utils/transformers';
 
 interface QueryParams {
   page?: string;
@@ -66,7 +67,7 @@ export const createEvent = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: error.message });
     }
 
-    res.status(201).json({ success: true, event: data });
+    res.status(201).json({ success: true, event: transformEvent(data) });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
@@ -140,10 +141,11 @@ export const getEvents = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    const enriched = (events || []).map((e: any) => ({
-      ...e,
-      organizer: organizerMap[e.organizer_id] || { _id: e.organizer_id },
-    }));
+    const enriched = (events || []).map((e: any) => {
+      const transformed = transformEvent(e);
+      transformed.organizer = organizerMap[e.organizer_id] || { _id: e.organizer_id };
+      return transformed;
+    });
 
     res.json({
       success: true,
@@ -185,9 +187,11 @@ export const getEvent = async (req: AuthRequest, res: Response) => {
 
     await supabase.rpc('increment_event_views', { event_uuid: event.id });
 
+    const transformed = transformEvent(event);
+    transformed.organizer = organizer;
     res.json({
       success: true,
-      event: { ...event, organizer },
+      event: transformed,
     });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -243,7 +247,7 @@ export const updateEvent = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: error.message });
     }
 
-    res.json({ success: true, event: updated });
+    res.json({ success: true, event: transformEvent(updated) });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
