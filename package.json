@@ -3,12 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "postinstall": "cd backend && npm install && cd ../frontend && npm install",
+    "install:backend": "cd backend && npm install --include=dev",
+    "install:frontend": "cd frontend && npm install --include=dev",
+    "postinstall": "npm run install:backend && npm run install:frontend",
     "build:frontend": "cd frontend && npm run build",
     "build:backend": "cd backend && npm run build",
     "build": "npm run build:frontend && npm run build:backend",
     "start": "cd backend && node dist/app.js",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
