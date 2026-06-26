@@ -1,50 +1,69 @@
 import { Request, Response } from 'express';
-import jwt, { SignOptions } from 'jsonwebtoken';
-import User from '../models/User';
+import supabase from '../lib/supabase';
 import { AuthRequest } from '../middleware/auth';
-
-const generateToken = (userId: string, role: string): string => {
-  const options: SignOptions = {
-    expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'],
-  };
-  return jwt.sign(
-    { userId, role },
-    process.env.JWT_SECRET || 'fallback_secret',
-    options
-  );
-};
 
 export const register = async (req: Request, res: Response) => {
   try {
-    const { email, password, firstName, lastName, role, organizationName } =
-      req.body;
+    const { email, password, firstName, lastName, role, organizationName } = req.body;
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: 'Email already in use' });
-    }
-
-    const user = await User.create({
+    const { data, error } = await supabase.auth.admin.createUser({
       email,
       password,
-      firstName,
-      lastName,
-      role: role || 'attendee',
-      organizationName,
+      email_confirm: true,
+      user_metadata: {
+        firstName,
+        lastName,
+        role: role || 'attendee',
+        organizationName: organizationName || null,
+      },
+      app_metadata: {
+        role: role || 'attendee',
+      },
     });
 
-    const token = generateToken(user._id.toString(), user.role);
+    if (error) {
+      if (error.message.includes('already registered')) {
+        return res.status(400).json({ message: 'Email already in use' });
+      }
+      return res.status(400).json({ message: error.message });
+    }
+
+    const user = data.user;
+    if (!user) {
+      return res.status(500).json({ message: 'Failed to create user' });
+    }
+
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    const token = signInData?.session?.access_token || '';
+
+    if (!token) {
+      return res.status(201).json({
+        success: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.user_metadata?.firstName,
+          lastName: user.user_metadata?.lastName,
+          role: user.app_metadata?.role || 'attendee',
+          organizationName: user.user_metadata?.organizationName || null,
+        },
+      });
+    }
 
     res.status(201).json({
       success: true,
       token,
       user: {
-        id: user._id,
+        id: user.id,
         email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-        organizationName: user.organizationName,
+        firstName: user.user_metadata?.firstName,
+        lastName: user.user_metadata?.lastName,
+        role: user.app_metadata?.role || 'attendee',
+        organizationName: user.user_metadata?.organizationName || null,
       },
     });
   } catch (error: any) {
@@ -56,29 +75,33 @@ export const login = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email }).select('+password');
-    if (!user) {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid email or password' });
-    }
+    const session = data.session;
+    const user = data.user;
 
-    const token = generateToken(user._id.toString(), user.role);
+    if (!session || !user) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
 
     res.json({
       success: true,
-      token,
+      token: session.access_token,
       user: {
-        id: user._id,
+        id: user.id,
         email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-        avatar: user.avatar,
-        organizationName: user.organizationName,
+        firstName: user.user_metadata?.firstName,
+        lastName: user.user_metadata?.lastName,
+        role: user.app_metadata?.role || 'attendee',
+        avatar: user.user_metadata?.avatar || null,
+        organizationName: user.user_metadata?.organizationName || null,
       },
     });
   } catch (error: any) {
@@ -88,20 +111,20 @@ export const login = async (req: Request, res: Response) => {
 
 export const getMe = async (req: AuthRequest, res: Response) => {
   try {
-    const user = req.user;
+    const user = req.user!;
     res.json({
       success: true,
       user: {
-        id: user!._id,
-        email: user!.email,
-        firstName: user!.firstName,
-        lastName: user!.lastName,
-        role: user!.role,
-        avatar: user!.avatar,
-        bio: user!.bio,
-        location: user!.location,
-        organizationName: user!.organizationName,
-        phone: user!.phone,
+        id: user.id,
+        email: user.email,
+        firstName: user.user_metadata?.firstName,
+        lastName: user.user_metadata?.lastName,
+        role: user.role || 'attendee',
+        avatar: user.user_metadata?.avatar || null,
+        bio: user.user_metadata?.bio || null,
+        location: user.user_metadata?.location || null,
+        organizationName: user.user_metadata?.organizationName || null,
+        phone: user.user_metadata?.phone || null,
       },
     });
   } catch (error: any) {
@@ -111,23 +134,42 @@ export const getMe = async (req: AuthRequest, res: Response) => {
 
 export const updateProfile = async (req: AuthRequest, res: Response) => {
   try {
-    const allowedFields = [
-      'firstName', 'lastName', 'bio', 'location',
-      'organizationName', 'phone', 'avatar',
-    ];
+    const { firstName, lastName, bio, location, organizationName, phone, avatar } = req.body;
+
     const updates: Record<string, any> = {};
-    for (const field of allowedFields) {
-      if (req.body[field] !== undefined) {
-        updates[field] = req.body[field];
-      }
+    if (firstName !== undefined) updates.firstName = firstName;
+    if (lastName !== undefined) updates.lastName = lastName;
+    if (bio !== undefined) updates.bio = bio;
+    if (location !== undefined) updates.location = location;
+    if (organizationName !== undefined) updates.organizationName = organizationName;
+    if (phone !== undefined) updates.phone = phone;
+    if (avatar !== undefined) updates.avatar = avatar;
+
+    const { data, error } = await supabase.auth.admin.updateUserById(
+      req.user!.id,
+      { user_metadata: { ...req.user!.user_metadata, ...updates } }
+    );
+
+    if (error) {
+      return res.status(400).json({ message: error.message });
     }
 
-    const user = await User.findByIdAndUpdate(req.user!._id, updates, {
-      new: true,
-      runValidators: true,
+    const user = data.user;
+    res.json({
+      success: true,
+      user: {
+        id: user?.id,
+        email: user?.email,
+        firstName: user?.user_metadata?.firstName,
+        lastName: user?.user_metadata?.lastName,
+        role: user?.app_metadata?.role || 'attendee',
+        avatar: user?.user_metadata?.avatar || null,
+        bio: user?.user_metadata?.bio || null,
+        location: user?.user_metadata?.location || null,
+        organizationName: user?.user_metadata?.organizationName || null,
+        phone: user?.user_metadata?.phone || null,
+      },
     });
-
-    res.json({ success: true, user });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
