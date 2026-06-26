@@ -41,7 +41,7 @@ export const createEvent = async (req: AuthRequest, res: Response) => {
       short_description: body.shortDescription || '',
       category: body.category || 'other',
       format: body.format || 'in_person',
-      status: body.status || 'draft',
+      status: body.status || 'published',
       organizer_id: req.user!.id,
       cover_image: coverImage,
       images: body.images || [],

@@ -15,7 +15,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     Promise.all([
-      eventAPI.getAll({ myEvents: 'true', limit: 50 }),
+      eventAPI.getAll({ myEvents: 'true', status: 'all', limit: 50 }),
       orderAPI.getAll({ limit: 50 }),
     ])
       .then(([eventsRes, ordersRes]) => {
